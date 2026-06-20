@@ -1,0 +1,30 @@
+syntax = "proto3";
+package reputation;
+
+service ReputationService {
+  rpc CreateUser (CreateUserRequest) returns (User);
+  rpc GetUser (UserId) returns (User);
+  rpc ListUsers (Empty) returns (UserList);
+}
+
+message Empty {}
+
+message UserId {
+  string userId = 1;
+}
+
+message CreateUserRequest {
+  string username = 1;
+}
+
+message User {
+  string id = 1;
+  string username = 2;
+  int32 reputationScore = 3;
+  bool restricted = 4;
+  string createdAt = 5;
+}
+
+message UserList {
+  repeated User users = 1;
+}

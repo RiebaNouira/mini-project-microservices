@@ -1,0 +1,49 @@
+syntax = "proto3";
+package content;
+
+service ContentService {
+  rpc CreatePost (CreatePostRequest) returns (Post);
+  rpc GetPost (PostId) returns (Post);
+  rpc ListPosts (ListPostsRequest) returns (PostList);
+  rpc UpdatePostStatus (UpdateStatusRequest) returns (Post);
+  rpc CanUserPost (UserId) returns (CanPostResponse);
+}
+
+message CreatePostRequest {
+  string userId = 1;
+  string text = 2;
+}
+
+message PostId {
+  string id = 1;
+}
+
+message UserId {
+  string userId = 1;
+}
+
+message Post {
+  string id = 1;
+  string userId = 2;
+  string text = 3;
+  string status = 4;
+  string createdAt = 5;
+}
+
+message ListPostsRequest {
+  string statusFilter = 1;
+}
+
+message PostList {
+  repeated Post posts = 1;
+}
+
+message UpdateStatusRequest {
+  string id = 1;
+  string status = 2;
+}
+
+message CanPostResponse {
+  bool allowed = 1;
+  string reason = 2;
+}

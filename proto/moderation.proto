@@ -1,0 +1,18 @@
+syntax = "proto3";
+package moderation;
+
+service ModerationService {
+  rpc GetModerationReport (PostId) returns (ModerationReport);
+}
+
+message PostId {
+  string postId = 1;
+}
+
+message ModerationReport {
+  string postId = 1;
+  string decision = 2;
+  string reason = 3;
+  int32 toxicityScore = 4;
+  string createdAt = 5;
+}
