@@ -1,0 +1,57 @@
+const assert = require('assert');
+const { evaluate } = require('./rules');
+
+function test(label, fn) {
+  try {
+    fn();
+    console.log(`PASS - ${label}`);
+  } catch (err) {
+    console.log(`FAIL - ${label}`);
+    console.error(err);
+    process.exitCode = 1;
+  }
+}
+
+test('normal text is approved', () => {
+  const r = evaluate('Bonjour, voici mon premier post sur SocioGuard !');
+  assert.strictEqual(r.decision, 'APPROUVE');
+  assert.strictEqual(r.toxicityScore, 0);
+});
+
+test('forbidden word triggers rejection', () => {
+  const r = evaluate('Attention, ceci est une arnaque, ne payez pas.');
+  assert.strictEqual(r.decision, 'REJETE');
+  assert.strictEqual(r.toxicityScore, 50);
+  assert.ok(r.reason.includes('arnaque'));
+});
+
+test('empty text is rejected (30 points only, under threshold alone)', () => {
+  const r = evaluate('');
+  assert.strictEqual(r.toxicityScore, 30);
+  assert.strictEqual(r.decision, 'APPROUVE');
+});
+
+test('shouting (caps ratio) adds 20 points but is not enough alone', () => {
+  const r = evaluate('THIS IS REALLY SHOUTING AT YOU');
+  assert.strictEqual(r.toxicityScore, 20);
+  assert.strictEqual(r.decision, 'APPROUVE');
+});
+
+test('repeated characters add 15 points', () => {
+  const r = evaluate('this is sooooo annoying');
+  assert.strictEqual(r.toxicityScore, 15);
+  assert.strictEqual(r.decision, 'APPROUVE');
+});
+
+test('combined rules stack and cross the threshold', () => {
+  const r = evaluate('arnaque!!!!! ne tombez pas dans le piege');
+  assert.strictEqual(r.toxicityScore, 65);
+  assert.strictEqual(r.decision, 'REJETE');
+});
+
+test('five rejections in a row would drop reputation by 50 (cross-checks spec section 10 step 4)', () => {
+  const r = evaluate('spam spam spam');
+  assert.strictEqual(r.decision, 'REJETE');
+});
+
+console.log('\nDone.');
