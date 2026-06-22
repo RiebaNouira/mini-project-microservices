@@ -4,6 +4,7 @@ const protoLoader = require('@grpc/proto-loader');
 const { v4: uuidv4 } = require('uuid');
 
 const db = require('./db');
+const kafka = require('./kafka');
 
 const PROTO_PATH = path.join(__dirname, '..', 'proto', 'reputation.proto');
 
@@ -16,11 +17,6 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 });
 
 const reputationProto = grpc.loadPackageDefinition(packageDefinition).reputation;
-
-// --- RPC implementations ---
-// grpc-js handlers have the signature (call, callback). We mark them `async`
-// so we can `await` the (now promise-based) db.js calls, and wrap the body
-// in try/catch to translate JS errors into proper gRPC status codes.
 
 async function createUser(call, callback) {
   try {
@@ -38,7 +34,7 @@ async function createUser(call, callback) {
     const newUser = {
       id: uuidv4(),
       username,
-      reputationScore: 100, // everyone starts trusted, per the spec
+      reputationScore: 100,
       restricted: false,
       createdAt: new Date().toISOString(),
     };
@@ -74,6 +70,45 @@ async function listUsers(call, callback) {
   }
 }
 
+async function handleKafkaMessage(topic, payload) {
+  if (!payload || !payload.userId) return;
+
+  try {
+    const user = await db.getUserById(payload.userId);
+    if (!user) return;
+
+    if (topic === 'content.flagged') {
+      const newScore = Math.max(0, user.reputationScore - 20);
+      const restricted = newScore <= 0;
+      await db.updateUserReputation({ id: user.id, reputationScore: newScore, restricted });
+      await db.insertReputationHistory({
+        id: uuidv4(),
+        userId: user.id,
+        delta: newScore - user.reputationScore,
+        reason: `content flagged${payload.reason ? `: ${payload.reason}` : ''}`,
+        createdAt: new Date().toISOString(),
+      });
+
+      if (restricted) {
+        await kafka.publish('user.restricted', {
+          userId: user.id,
+          reputationScore: newScore,
+          createdAt: new Date().toISOString(),
+        });
+        console.log(`ms-reputation blocked user ${user.id} (score ${newScore})`);
+      } else {
+        console.log(`ms-reputation decreased score for ${user.id} to ${newScore}`);
+      }
+    }
+  } catch (err) {
+    console.error('ms-reputation Kafka handler error:', err.message);
+  }
+}
+
+async function startKafkaConsumer() {
+  await kafka.createConsumer('group-reputation', ['content.approved', 'content.flagged'], handleKafkaMessage);
+}
+
 function main() {
   const server = new grpc.Server();
 
@@ -89,7 +124,12 @@ function main() {
       console.error('Failed to bind server:', err);
       return;
     }
+
+    server.start();
     console.log(`ms-reputation gRPC server listening on port ${port}`);
+    startKafkaConsumer().catch((consumerErr) => {
+      console.error('ms-reputation Kafka startup failed:', consumerErr.message);
+    });
   });
 }
 

@@ -27,15 +27,11 @@ db.serialize(() => {
   `);
 });
 
-// --- Promise wrappers ---
-// sqlite3's API is callback-based. These three helpers are the only place
-// that touches the raw callback API; everything else in this file (and in
-// server.js) uses async/await on top of them.
 function run(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.run(sql, params, function (err) {
       if (err) return reject(err);
-      resolve(this); // `this.lastID` / `this.changes` if ever needed
+      resolve(this);
     });
   });
 }
@@ -58,7 +54,7 @@ function rowToUser(row) {
     id: row.id,
     username: row.username,
     reputationScore: row.reputationScore,
-    restricted: !!row.restricted, // SQLite has no bool type — stored as 0/1, exposed as JS boolean
+    restricted: !!row.restricted,
     createdAt: row.createdAt,
   };
 }
@@ -87,10 +83,29 @@ async function listUsers() {
   return rows.map(rowToUser);
 }
 
+async function updateUserReputation(user) {
+  await run(
+    `UPDATE users SET reputationScore = ?, restricted = ? WHERE id = ?`,
+    [user.reputationScore, user.restricted ? 1 : 0, user.id]
+  );
+  return getUserById(user.id);
+}
+
+async function insertReputationHistory(entry) {
+  await run(
+    `INSERT INTO reputation_history (id, userId, delta, reason, createdAt)
+     VALUES (?, ?, ?, ?, ?)`,
+    [entry.id, entry.userId, entry.delta, entry.reason, entry.createdAt]
+  );
+  return entry;
+}
+
 module.exports = {
   db,
   insertUser,
   getUserById,
   getUserByUsername,
   listUsers,
+  updateUserReputation,
+  insertReputationHistory,
 };
